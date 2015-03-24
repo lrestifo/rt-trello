@@ -41,20 +41,20 @@
 DEBUG=1
 
 #
-# Return all boards for the current user {id:name}
+# Return all active boards for the current user {id:name}
 function boards() {
-	curl --silent --url "$TrelloURI/members/me/boards?key=$TrelloAPIkey&token=$TrelloToken" | jq -c '.[] | {id, name}'
+	curl --silent --url "$TrelloURI/members/me/boards?key=$TrelloAPIkey&token=$TrelloToken" | jq -c '.[] | select(.closed == false) | {id, name}'
 }
 
 #
-# Return the board ID given the board name
+# Return the board ID given the board name, no output if not found
 # $1 <== board name
 function boardID() {
 	curl --silent --url "$TrelloURI/members/me/boards?key=$TrelloAPIkey&token=$TrelloToken" | jq -r '.[] | select(.name == "'"$1"'") | {id} | .id'
 }
 
 #
-# Return lists given a board name {id:name}
+# Return lists given a board name {id:name}, no output on invalid board
 # $1 <== board name
 function lists() {
 	for b in $(boardID "$1")
@@ -63,7 +63,7 @@ function lists() {
 	done
 }
 
-# Return the list ID given board name and list name
+# Return the list ID given board name and list name, no output if not found
 # $1 <== board name, $2 <== list name
 function listID() {
 	for b in $(boardID "$1")
@@ -73,17 +73,17 @@ function listID() {
 }
 
 #
-# Return cards given a board name {id:name:desc:due:labels:idList}
+# Return cards given a board name {id:name:desc:due:labels:idMembers:idList}, no output if board not found
 # $1 <== board name
 function cards() {
 	for b in $(boardID "$1")
 	do
-		curl --silent --url "$TrelloURI/boards/$b/cards?key=$TrelloAPIkey&token=$TrelloToken" | jq -c '.[] | {id, name, desc, due, labels, idList}'
+		curl --silent --url "$TrelloURI/boards/$b/cards?key=$TrelloAPIkey&token=$TrelloToken" | jq -c '.[] | {id, name, desc, due, labels, idMembers, idList}'
 	done
 }
 
 #
-# Return card ID given board name and card name
+# Return card ID given board name and card name, no output if either not found
 # $1 <== board name, $2 <== card name
 function cardID() {
 	for b in $(boardID "$1")
@@ -134,30 +134,36 @@ function normaliseLabels() {
 			[ -n "$j1" ] && jO='"'"$j1"'"'
 			;;
 	esac
-	echo ',"labels":['$jO']'
+	echo ',"labels":['"$jO"']'
 }
 
 #
-# Retrieve members of a given board
+# Retrieve members of a given board, no output if board not found
 # $1 <== board name
 function boardMembers() {
-	b=$(boardID "$1")
-	curl --silent --url "$TrelloURI/boards/$b/members?key=$TrelloAPIkey&token=$TrelloToken" | jq -r '.[] | .username' | sort
+	for b in $(boardID "$1")
+	do
+		curl --silent --url "$TrelloURI/boards/$b/members?key=$TrelloAPIkey&token=$TrelloToken" | jq -r '.[] | .username' | sort
+	done
 }
 
 #
-# Retrieve Trello username given real name and board
+# Retrieve Trello username given real name and board, no output if either not found
 # $1 <== user fullname, $2 <== board name
 function boardUName() {
-	b=$(boardID "$2")
-	curl --silent --url "$TrelloURI/boards/$b/members?key=$TrelloAPIkey&token=$TrelloToken" | jq -r '.[] |  select(.fullName == "'"$1"'") | .username'
+	for b in $(boardID "$2")
+	do
+		curl --silent --url "$TrelloURI/boards/$b/members?key=$TrelloAPIkey&token=$TrelloToken" | jq -r '.[] |  select(.fullName == "'"$1"'") | .username'
+	done
 }
 
-# Retrieve Trello user ID given username and board
+# Retrieve Trello user ID given username and board, no output if either not found
 # $1 <== Trello username, $2 <== board name
 function boardUID() {
-	b=$(boardID "$2")
-	curl --silent --url "$TrelloURI/boards/$b/members?key=$TrelloAPIkey&token=$TrelloToken" | jq -r '.[] |  select(.username == "'$1'") | .id'
+	for b in $(boardID "$2")
+	do
+		curl --silent --url "$TrelloURI/boards/$b/members?key=$TrelloAPIkey&token=$TrelloToken" | jq -r '.[] |  select(.username == "'"$1"'") | .id'
+	done
 }
 
 #
@@ -174,7 +180,7 @@ function normaliseOwner() {
 	re_email="${begin}(${name_part}@${domain})${end}"
 	if [[ "$1" =~ $re_email ]]; then
 		# if this is an email then use the mapping table (defined in ~/.trellorc)
-		usrname=$(awk -F "=" "/^$BASH_REMATCH/ { print \$2 }" $ITTeamUsers)
+		usrname=$(awk -F "=" "/^$BASH_REMATCH/ { print \$2 }" "$ITTeamUsers")
 		[ -n "$usrname" ] && uid=$(boardUID "$usrname" "$2")
 		[ -n "$usrname" ] || uid=""
 	else
@@ -194,7 +200,7 @@ function normaliseOwner() {
 # Return the Trello equivalent of an RT ticket owner email as defines in ~/.trellorc
 # $1 <== email
 function trelloUIDfromRTEmail() {
-	tUID=$(awk -F "=" "/^$1/ { print \$2 }" $ITTeamUsers)
+	tUID=$(awk -F "=" "/^$1/ { print \$2 }" "$ITTeamUsers")
 	[ -n "$tUID" ] || tUID="null"
 	echo "$tUID"
 }
@@ -225,7 +231,7 @@ function addTrelloCard() {
 # $1 <== card id, $2 <== card data, $3 <== ticket id
 # Sets: $ttSubj, $ttStat, $ttDue, $ttList, $ttType, $ttOwner
 function readTrelloCard() {
-	ttSubj=$(echo "$2" | jq -r '.name' | awk '{ gsub(/'$3': /,""); print }')
+	ttSubj=$(echo "$2" | jq -r '.name' | awk '{ gsub(/'"$3"': /,""); print }')
 	ttStat=$(echo "$2" | jq -r '.labels | .[0] | .name')
 	ttType=$(echo "$2" | jq -r '.labels | .[1] | .name')
 	ttDue=$(echo "$2" | jq -r '.due' | awk '{ print substr($0,1,10) }')
@@ -306,7 +312,7 @@ function delTrelloCard() {
 #
 # Check if RT server is accessible
 function isRTup() {
-	curl --basic --user $rtUser:$rtPass --silent --url $rtServer/REST/1.0 >/dev/null 2>&1
+	curl --basic --user "$rtUser:$rtPass" --silent --url "$rtServer/REST/1.0" >/dev/null 2>&1
 }
 
 #
@@ -332,7 +338,7 @@ function readRTTicket() {
 		rtOwnerEmail=$(curl --basic --user "$rtUser:$rtPass" --silent --url "$rtServer/REST/1.0/user/$rtOwner/show?user=$rtUser&pass=$rtPass" | awk '/^EmailAddress: / { gsub(/^EmailAddress: /,""); print }')
 		rtOwnerTrello=$(trelloUIDfromRTEmail "$rtOwnerEmail")
 	fi
-	rtRequestor=$(echo "$tData" | awk '/^Requestors: / { gsub(/^Requestors: /,""); print }')
+	# rtRequestor=$(echo "$tData" | awk '/^Requestors: / { gsub(/^Requestors: /,""); print }')
 }
 
 #
@@ -392,18 +398,18 @@ function syncFromRT() {
 		cData=$(curl --silent --url "$TrelloURI/cards/$c?key=$TrelloAPIkey&token=$TrelloToken")
 		ttID=$(echo "$cData" | jq -r '.name' | awk -F ":" '/[0-9]+: / { print $1 }')
 		if [ -n "$ttID" ]; then
-			readTrelloCard $c "$cData" $ttID
-			readRTTicket $ttID
+			readTrelloCard "$c" "$cData" "$ttID"
+			readRTTicket "$ttID"
 			logd "Trello=>/$ttID/$ttSubj/$ttStat/$ttDue/$ttType/$ttOwner"
 			logd "RTRTRT=>|$ttID|$rtSubj|$rtStat|$rtDue|$rtType|$rtOwnerTrello"
-			[ "$3" != "--noSubj" ] && compareAttr "$1" $ttID "$ttSubj" "$rtSubj" "Subject" "$ttList" "$2" "$c"
-			compareAttr "$1" $ttID "$ttDue" "$rtDue" "Due Date" "$ttList" "$2" "$c"
-			compareAttr "$1" $ttID "$ttOwner" "$rtOwnerTrello" "Owner" "$ttList" "$2" "$c"
-			compareAttr "$1" $ttID "$ttStat" "$rtStat" "Status" "$ttList" "$2" "$c"
+			[ "$3" != "--noSubj" ] && compareAttr "$1" "$ttID" "$ttSubj" "$rtSubj" "Subject" "$ttList" "$2" "$c"
+			compareAttr "$1" "$ttID" "$ttDue" "$rtDue" "Due Date" "$ttList" "$2" "$c"
+			compareAttr "$1" "$ttID" "$ttOwner" "$rtOwnerTrello" "Owner" "$ttList" "$2" "$c"
+			compareAttr "$1" "$ttID" "$ttStat" "$rtStat" "Status" "$ttList" "$2" "$c"
 			if [ "$rtType" == "Change request" ] ; then
-				compareAttr "$1" $ttID "$ttType" "$rtType" "Request Type" "$ttList" "$2" "$c"
+				compareAttr "$1" "$ttID" "$ttType" "$rtType" "Request Type" "$ttList" "$2" "$c"
 			else
-				compareAttr "$1" $ttID "$ttType" "null" "Request Type" "$ttList" "$2" "$c"
+				compareAttr "$1" "$ttID" "$ttType" "null" "Request Type" "$ttList" "$2" "$c"
 			fi
 		fi
 	done
@@ -413,7 +419,7 @@ function syncFromRT() {
 # Create a new Trello card taking content from an RT Ticket
 # $1 <== board name, $2 <== list name, $3 <== RT ticket id
 function addFromRT() {
-	readRTTicket $3
+	readRTTicket "$3"
 	addTrelloCard "$1" "$2" "$3: $rtSubj" "$rtServer/Ticket/Display.html?id=$3" "$rtDue" "$rtStat" "$rtType" "$rtOwnerTrello"
 }
 
@@ -424,7 +430,7 @@ function addFromRT() {
 function addFromRTqry() {
 	q=$(urlencode "$3")
 	cmd="curl --basic --user $rtUser:$rtPass --silent --url $rtServer/REST/1.0/search/ticket?query=$q&orderby=+id&format=i&user=$rtUser&pass=$rtPass"
-	for t in `$cmd | awk -F "/" '/^ticket\// { print $2 }'`
+	for t in $($cmd | awk -F "/" '/^ticket\// { print $2 }')
 	do
 		cID=$(addFromRT "$1" "$2" "$t")
 		log "RT Ticket $t ==> Trello Card $cID"
@@ -434,19 +440,20 @@ function addFromRTqry() {
 #
 # Output date&timestamped message
 function log() {
-	echo "`date`: $1"
+	echo "$(date): $1"
 }
 function logn() {
-	echo -n "`date`: $1"
+	echo -n "$(date): $1"
 }
 function logd() {
-	[ $DEBUG ] && echo "$(tput smso)$(tput setaf 3)DEBUG: `date` • $(tput setaf 6)$1$(tput sgr0)"
+	[ $DEBUG ] && echo "$(tput smso)$(tput setaf 3)DEBUG: $(date) • $(tput setaf 6)$1$(tput sgr0)"
 }
 
 #
 # Display version number info
 function version() {
 	echo "$1 0.1.0"
+	[ "$DEBUG" ] && echo " Debugging mode enabled"
 	curl --version
 	jq --version
 }
@@ -463,13 +470,13 @@ function die() {
 # Trow an usage message out
 function usage() {
 	cat <<End-of-message
-Usage: `basename $0` <command> [<args>]
+Usage: $(basename "$0") <command> [<args>]
 
 Execute commands on Trello and RT
 Commands and parameters are positional and case sensitive; they must be entered in the order shown
 
 Commands:
-   boards                                       Show all boards accessible to this user
+   boards                                       Show all active boards accessible to this user
    boardID <b>                                  Show Trello ID of the given board
    lists <b>                                    Show Trello Lists defined in the given board
    listID <b> <l>                               Show Trello ID of a given list in the given board
@@ -497,7 +504,7 @@ Arguments:
    <#>     RT Ticket number
    <sq>    RT TicketSQL statement
 
-Configuration (read from ~/.trellorc):
+Configuration (read from /etc/trellorc, etc/trellorc, ~/.trellorc):
    TrelloURI       Trello API endpoint
    TrelloAPIkey    Trello API key (https://trello.com/docs/gettingstarted/index.html#getting-an-application-key)
    TrelloToken     Trello authorisation token
@@ -513,14 +520,16 @@ End-of-message
 # main()
 #
 # Read configuration parameters
-[ -f ~/.trellorc ] && . ~/.trellorc
-[ -n "$TrelloAPIkey" ] || die "No TrelloAPIkey in ~/.trellorc"
-[ -n "$TrelloToken"  ] || die "No TrelloToken in ~/.trellorc"
-[ -n "$TrelloURI"    ] || die "No TrelloURI in ~/.trellorc"
-[ -n "$rtServer"     ] || die "No rtServer in ~/.trellorc"
-[ -n "$rtUser"       ] || die "No rtUser in ~/.trellorc"
-[ -n "$rtPass"       ] || die "No rtPass in ~/.trellorc"
-[ -n "$ITTeamUsers"  ] || die "No ITTeamUsers in ~/.trellorc"
+[ -f /etc/trellorc ] && . /etc/trellorc && [ "$DEBUG" ] && echo "Read config: /etc/trellorc"
+[ -f etc/trellorc ] && . etc/trellorc && [ "$DEBUG" ] && echo "Read config: ./etc/trellorc"
+[ -f ~/.trellorc ] && . ~/.trellorc && [ "$DEBUG" ] && echo "Read config: $HOME/.trellorc"
+[ -n "$TrelloAPIkey" ] || die "No TrelloAPIkey in configuration file"
+[ -n "$TrelloToken"  ] || die "No TrelloToken in configuration file"
+[ -n "$TrelloURI"    ] || die "No TrelloURI in configuration file"
+[ -n "$rtServer"     ] || die "No rtServer in configuration file"
+[ -n "$rtUser"       ] || die "No rtUser in configuration file"
+[ -n "$rtPass"       ] || die "No rtPass in configuration file"
+[ -n "$ITTeamUsers"  ] || die "No ITTeamUsers in configuration file"
 
 #
 # Process command-line arguments
@@ -538,7 +547,8 @@ case $1 in
 		lists "$2"
 		;;
 	"listID")
-		[ -n "$2" ] && [ -n "$3" ] || die "Usage: $0 listID <boardName> <listName>"
+		[ -n "$2" ] || die "Usage: $0 listID <boardName> <listName>"
+		[ -n "$3" ] || die "Usage: $0 listID <boardName> <listName>"
 		listID "$2" "$3"
 		;;
 	"cards")
@@ -546,7 +556,8 @@ case $1 in
 		cards "$2"
 		;;
 	"cardID")
-		[ -n "$2" ] && [ -n "$3" ] || die "Usage: $0 cardID <boardName> <cardName>"
+		[ -n "$2" ] || die "Usage: $0 cardID <boardName> <cardName>"
+		[ -n "$3" ] || die "Usage: $0 cardID <boardName> <cardName>"
 		cardID "$2" "$3"
 		;;
 	"members")
@@ -554,25 +565,32 @@ case $1 in
 		boardMembers "$2"
 		;;
 	"memberName")
-		[ -n "$2" ] && [ -n "$3" ] || die "Usage: $0 memberName <fullName> <boardName>"
+		[ -n "$2" ] || die "Usage: $0 memberName <fullName> <boardName>"
+		[ -n "$3" ] || die "Usage: $0 memberName <fullName> <boardName>"
 		boardUName "$2" "$3"
 		;;
 	"memberID")
-		[ -n "$2" ] && [ -n "$3" ] || die "Usage: $0 memberID <fullName> <boardName>"
+		[ -n "$2" ] || die "Usage: $0 memberID <fullName> <boardName>"
+		[ -n "$3" ] || die "Usage: $0 memberID <fullName> <boardName>"
 		usrname=$(boardUName "$2" "$3")
 		boardUID "$usrname" "$3"
 		;;
 	"addCard")
-		[ -n "$2" ] && [ -n "$3" ] || die "Usage: $0 addCard <boardName> <listName> [ <cardName> <description> <due date> <colour> <type> <owner> ]"
+		[ -n "$2" ] || die "Usage: $0 addCard <boardName> <listName> [ <cardName> <description> <due date> <colour> <type> <owner> ]"
+		[ -n "$3" ] || die "Usage: $0 addCard <boardName> <listName> [ <cardName> <description> <due date> <colour> <type> <owner> ]"
 		addTrelloCard "$2" "$3" "$4" "$5" "$6" "$7" "$8" "$9"
 		;;
 	"addFromRT")
-		[ -n "$2" ] && [ -n "$3" ] && [ -n "$4" ] || die "Usage: $0 addFromRT <boardName> <listName> <rtTicket#>"
+		[ -n "$2" ] || die "Usage: $0 addFromRT <boardName> <listName> <rtTicket#>"
+		[ -n "$3" ] || die "Usage: $0 addFromRT <boardName> <listName> <rtTicket#>"
+		[ -n "$4" ] || die "Usage: $0 addFromRT <boardName> <listName> <rtTicket#>"
 		isRTup; [ $? == 0 ] || die "Can't reach RT server.  VPN, maybe?"
 		addFromRT "$2" "$3" "$4"
 		;;
 	"addFromRTQry")
-		[ -n "$2" ] && [ -n "$3" ] && [ -n "$4" ] || die "Usage: $0 addFromRTQry <boardName> <listName> <rtTicketSQLQuery>"
+		[ -n "$2" ] || die "Usage: $0 addFromRTQry <boardName> <listName> <rtTicketSQLQuery>"
+		[ -n "$3" ] || die "Usage: $0 addFromRTQry <boardName> <listName> <rtTicketSQLQuery>"
+		[ -n "$4" ] || die "Usage: $0 addFromRTQry <boardName> <listName> <rtTicketSQLQuery>"
 		isRTup; [ $? == 0 ] || die "Can't reach RT server.  VPN, maybe?"
 		addFromRTqry "$2" "$3" "$4"
 		;;
@@ -586,7 +604,7 @@ case $1 in
 		exit 0
 		;;
 	"version")
-		version "`basename $0`"
+		version "$(basename "$0")"
 		exit 0
 		;;
 	*)
