@@ -36,79 +36,32 @@
 #
 ###############################################################################
 
-#
+# -----------------------------------
+# Global variables
+#------------------------------------
 # Set to 1 to enable debugging output
 DEBUG=1
+curl="curl --silent --user-agent SLT-RT-Trello"
 
-#
-# Return all active boards for the current user {id:name}
-function boards() {
-	curl --silent --url "$TrelloURI/members/me/boards?key=$TrelloAPIkey&token=$TrelloToken" | jq -c '.[] | select(.closed == false) | {id, name}'
-}
-
-#
-# Return the board ID given the board name, no output if not found
-# $1 <== board name
-function boardID() {
-	curl --silent --url "$TrelloURI/members/me/boards?key=$TrelloAPIkey&token=$TrelloToken" | jq -r '.[] | select(.name == "'"$1"'") | {id} | .id'
-}
-
-#
-# Return lists given a board name {id:name}, no output on invalid board
-# $1 <== board name
-function lists() {
-	for b in $(boardID "$1")
-	do
-		curl --silent --url "$TrelloURI/boards/$b/lists?key=$TrelloAPIkey&token=$TrelloToken" | jq -c '.[] | {id, name}'
-	done
-}
-
-# Return the list ID given board name and list name, no output if not found
-# $1 <== board name, $2 <== list name
-function listID() {
-	for b in $(boardID "$1")
-	do
-		curl --silent --url "$TrelloURI/boards/$b/lists?key=$TrelloAPIkey&token=$TrelloToken" | jq -r '.[] | select(.name == "'"$2"'") | {id} | .id'
-	done
-}
-
-#
-# Return cards given a board name {id:name:desc:due:labels:idMembers:idList}, no output if board not found
-# $1 <== board name
-function cards() {
-	for b in $(boardID "$1")
-	do
-		curl --silent --url "$TrelloURI/boards/$b/cards?key=$TrelloAPIkey&token=$TrelloToken" | jq -c '.[] | {id, name, desc, due, labels, idMembers, idList}'
-	done
-}
-
-#
-# Return card ID given board name and card name, no output if either not found
-# $1 <== board name, $2 <== card name
-function cardID() {
-	for b in $(boardID "$1")
-	do
-		curl --silent --url "$TrelloURI/boards/$b/cards?key=$TrelloAPIkey&token=$TrelloToken" | jq -r '.[] | select(.name == "'"$2"'") | {id} | .id'
-	done
-}
-
-#
+# -----------------------------------
+# Utility and support functions
+#------------------------------------
 # URLencode the string given as input
 # $1 <== uri string
 function urlencode() {
 	echo "$1" | perl -MURI::Escape -ne 'chomp; print uri_escape($_),"\n"'
 }
 
-#
 # Convert the given argument to lower case
 # $1 <== a string
 function tolower() {
 	echo "$1" | tr '[:upper:]' '[:lower:]'
 }
 
-#
 # Build the correct JSON string for the labels attribute
-# $1 <== status (or color), $2 <== request type (or color) (or empty)
+# $1 <== RT ticket status (or color)
+# $2 <== RT request type (or color) (or empty)
+# $3 <== RT ticket priority (or color) (or empty)
 function normaliseLabels() {
 	jO=""
 	col=$(tolower "$1")
@@ -122,7 +75,7 @@ function normaliseLabels() {
 		*)						j1=""		;;
 	esac
 	case "$chg" in
-		"change"|"change request")
+		"change"|"change request"|"change_request")
 			[ -n "$j1" ] || j1="purple"
 			jO='"'"$j1"'","purple"'
 			;;
@@ -137,36 +90,6 @@ function normaliseLabels() {
 	echo ',"labels":['"$jO"']'
 }
 
-#
-# Retrieve members of a given board, no output if board not found
-# $1 <== board name
-function boardMembers() {
-	for b in $(boardID "$1")
-	do
-		curl --silent --url "$TrelloURI/boards/$b/members?key=$TrelloAPIkey&token=$TrelloToken" | jq -r '.[] | .username' | sort
-	done
-}
-
-#
-# Retrieve Trello username given real name and board, no output if either not found
-# $1 <== user fullname, $2 <== board name
-function boardUName() {
-	for b in $(boardID "$2")
-	do
-		curl --silent --url "$TrelloURI/boards/$b/members?key=$TrelloAPIkey&token=$TrelloToken" | jq -r '.[] |  select(.fullName == "'"$1"'") | .username'
-	done
-}
-
-# Retrieve Trello user ID given username and board, no output if either not found
-# $1 <== Trello username, $2 <== board name
-function boardUID() {
-	for b in $(boardID "$2")
-	do
-		curl --silent --url "$TrelloURI/boards/$b/members?key=$TrelloAPIkey&token=$TrelloToken" | jq -r '.[] |  select(.username == "'"$1"'") | .id'
-	done
-}
-
-#
 # Validate Trello board member information, return valid idMembers JSON or empty
 # $1 <== either Trello username or Esselte email address, $2 <== board name
 function normaliseOwner() {
@@ -194,6 +117,83 @@ function normaliseOwner() {
 		fi
 	fi
 	[ -n "$uid" ] && echo ',"idMembers":"'"$uid"'"'
+}
+
+# -----------------------------------
+# Command execution functions
+#------------------------------------
+# Return all active boards for the current user {id:name}
+function boards() {
+	$curl --url "$TrelloURI/members/me/boards?key=$TrelloAPIkey&token=$TrelloToken" | jq -c '.[] | select(.closed == false) | {id, name}'
+}
+
+# Return the board ID given the board name, no output if not found
+# $1 <== board name
+function boardID() {
+	$curl --url "$TrelloURI/members/me/boards?key=$TrelloAPIkey&token=$TrelloToken" | jq -r '.[] | select(.name == "'"$1"'") | {id} | .id'
+}
+
+# Return lists given a board name {id:name}, no output on invalid board
+# $1 <== board name
+function lists() {
+	for b in $(boardID "$1")
+	do
+		$curl --url "$TrelloURI/boards/$b/lists?key=$TrelloAPIkey&token=$TrelloToken" | jq -c '.[] | {id, name}'
+	done
+}
+
+# Return the list ID given board name and list name, no output if not found
+# $1 <== board name, $2 <== list name
+function listID() {
+	for b in $(boardID "$1")
+	do
+		$curl --url "$TrelloURI/boards/$b/lists?key=$TrelloAPIkey&token=$TrelloToken" | jq -r '.[] | select(.name == "'"$2"'") | {id} | .id'
+	done
+}
+
+# Return cards given a board name {id:name:desc:due:labels:idMembers:idList}, no output if board not found
+# $1 <== board name
+function cards() {
+	for b in $(boardID "$1")
+	do
+		$curl --url "$TrelloURI/boards/$b/cards?key=$TrelloAPIkey&token=$TrelloToken" | jq -c '.[] | {id, name, desc, due, labels, idMembers, idList}'
+	done
+}
+
+# Return card ID given board name and card name, no output if either not found
+# $1 <== board name, $2 <== card name
+function cardID() {
+	for b in $(boardID "$1")
+	do
+		$curl --url "$TrelloURI/boards/$b/cards?key=$TrelloAPIkey&token=$TrelloToken" | jq -r '.[] | select(.name == "'"$2"'") | {id} | .id'
+	done
+}
+
+# Retrieve members of a given board, no output if board not found
+# $1 <== board name
+function boardMembers() {
+	for b in $(boardID "$1")
+	do
+		$curl --url "$TrelloURI/boards/$b/members?key=$TrelloAPIkey&token=$TrelloToken" | jq -r '.[] | .username' | sort
+	done
+}
+
+# Retrieve Trello username given real name and board, no output if either not found
+# $1 <== user fullname, $2 <== board name
+function boardUName() {
+	for b in $(boardID "$2")
+	do
+		$curl --url "$TrelloURI/boards/$b/members?key=$TrelloAPIkey&token=$TrelloToken" | jq -r '.[] |  select(.fullName == "'"$1"'") | .username'
+	done
+}
+
+# Retrieve Trello user ID given username and board, no output if either not found
+# $1 <== Trello username, $2 <== board name
+function boardUID() {
+	for b in $(boardID "$2")
+	do
+		$curl --url "$TrelloURI/boards/$b/members?key=$TrelloAPIkey&token=$TrelloToken" | jq -r '.[] |  select(.username == "'"$1"'") | .id'
+	done
 }
 
 #
@@ -312,7 +312,7 @@ function delTrelloCard() {
 #
 # Check if RT server is accessible
 function isRTup() {
-	curl --basic --user "$rtUser:$rtPass" --silent --url "$rtServer/REST/1.0" >/dev/null 2>&1
+	$curl --basic --user "$rtUser:$rtPass" --url "$rtServer/REST/1.0" >/dev/null 2>&1
 }
 
 #
@@ -520,9 +520,9 @@ End-of-message
 # main()
 #
 # Read configuration parameters
-[ -f /etc/trellorc ] && . /etc/trellorc && [ "$DEBUG" ] && echo "Read config: /etc/trellorc"
-[ -f etc/trellorc ] && . etc/trellorc && [ "$DEBUG" ] && echo "Read config: ./etc/trellorc"
-[ -f ~/.trellorc ] && . ~/.trellorc && [ "$DEBUG" ] && echo "Read config: $HOME/.trellorc"
+[ -f /etc/trellorc ] && . /etc/trellorc && logd "Read config: /etc/trellorc"
+[ -f etc/trellorc ] && . etc/trellorc && logd "Read config: ./etc/trellorc"
+[ -f ~/.trellorc ] && . ~/.trellorc && logd "Read config: $HOME/.trellorc"
 [ -n "$TrelloAPIkey" ] || die "No TrelloAPIkey in configuration file"
 [ -n "$TrelloToken"  ] || die "No TrelloToken in configuration file"
 [ -n "$TrelloURI"    ] || die "No TrelloURI in configuration file"
@@ -607,6 +607,24 @@ case $1 in
 		version "$(basename "$0")"
 		exit 0
 		;;
+	# Reserved commands -- used for debugging ONLY !!
+	"urlencode")
+		[ $DEBUG ] && urlencode "$2"
+		exit 0
+		;;
+	"tolower")
+		[ $DEBUG ] && tolower "$2"
+		exit 0
+		;;
+	"normaliseLabels")
+		[ $DEBUG ] && normaliseLabels "$2" "$3"
+		exit 0
+		;;
+	"normaliseOwner")
+		[ $DEBUG ] && normaliseOwner "$2" "$3"
+		exit 0
+		;;
+	# !! End of Debugging Commands !!
 	*)
 		usage
 		exit 1
