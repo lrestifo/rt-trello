@@ -58,41 +58,95 @@ function tolower() {
 	echo "$1" | tr '[:upper:]' '[:lower:]'
 }
 
+# Output string attribute as JSON
+# $1 <== attribute name
+# $2 <== attribute value (string)
+function toJSONstr() {
+	printf '"%s":"%s"' "$1" "$2"
+}
+
+# Output number attribute as JSON
+# $1 <== attribute name
+# $2 <== attribute value (number)
+function toJSONnum() {
+	printf '"%s":%d' "$1" "$2"
+}
+
+# Output array of strings as JSON
+# $1 <== array of strings
+function toJSONarr() {
+	n=${#*}
+	if [ "$n" -gt 0 ]; then
+		printf "["
+		while [ "$n" -gt 0 ]
+		do
+			printf '"%s"' "$1"
+			shift
+			let "n -= 1"
+			[ "$n" -gt 0 ] && printf ","
+		done
+		printf "]"
+	fi
+}
+
 # Build the correct JSON string for the labels attribute
 # $1 <== RT ticket status (or color)
 # $2 <== RT request type (or color) (or empty)
 # $3 <== RT ticket priority (or color) (or empty)
+# If $1 is empty, returns and empty string
 function normaliseLabels() {
-	jO=""
-	col=$(tolower "$1")
-	chg=$(tolower "$2")
-	case "$col" in
-		"new"|"open")			j1="red"	;;
-		"user_testing")			j1="orange"	;;
-		"stalled"|"waiting")	j1="yellow"	;;
-		"resolved"|"rejected")	j1="green"	;;
-		"red"|"orange"|"yellow"|"blue"|"green"|"purple")	j1="$col"	;;
-		*)						j1=""		;;
-	esac
-	case "$chg" in
-		"change"|"change request"|"change_request")
-			[ -n "$j1" ] || j1="purple"
-			jO='"'"$j1"'","purple"'
-			;;
-		"red"|"orange"|"yellow"|"blue"|"green"|"purple")
-			[ -n "$j1" ] && jO='"'"$j1"',"'$chg'"}'
-			[ -n "$j1" ] || jO='"'"$chg"'"}'
-			;;
-		*)
-			[ -n "$j1" ] && jO='"'"$j1"'"'
-			;;
-	esac
-	echo ',"labels":['"$jO"']'
+	declare -a l
+	tSts=$(tolower "$1")
+	tReq=$(tolower "$2")
+	tPri="$3"
+	if [ -n "$tSts" ]; then
+		# Status
+		case "$tSts" in
+			"new"|"open")
+				l[0]="red"
+				;;
+			"user_testing")
+				l[0]="orange"
+				;;
+			"stalled"|"waiting")
+				l[0]="yellow"
+				;;
+			"resolved"|"rejected")
+				l[0]="green"
+				;;
+			*)
+				l[0]="$tSts"
+				;;
+		esac
+		# Req Type
+		case "$tReq" in
+			"change"|"change request"|"change_request")
+				l[1]="purple"
+				;;
+			*)
+				[ -n "$tReq" ] && l[1]="$tReq"
+				;;
+		esac
+		# Priority
+		if [ -n "$tPri" ]; then
+			if [ "$tPri" -ge 30 -a "$tPri" -lt 40 ]; then
+				l[2]="blue"
+			elif [ "$tPri" -ge 40 ]; then
+				l[2]="pink"
+			fi
+		fi
+		if [ ${#l[*]} -gt 0 ]; then
+			echo -n '"labels":'
+			toJSONarr "${l[@]}"
+			echo ""
+		fi
+	fi
 }
 
 # Validate Trello board member information, return valid idMembers JSON or empty
 # $1 <== either Trello username or Esselte email address, $2 <== board name
 function normaliseOwner() {
+	uID=""
 	# for the email mathing regex: http://stackoverflow.com/questions/14170873/bash-regex-email-matching
 	char='[[:alnum:]!#\$%&'\''\*\+/=?^_\`{|}~-]'
 	name_part="${char}+(\.${char}+)*"
@@ -102,21 +156,23 @@ function normaliseOwner() {
 	# include capturing parentheses, these are the ** 2nd ** set of parentheses (there's a pair in $begin)
 	re_email="${begin}(${name_part}@${domain})${end}"
 	if [[ "$1" =~ $re_email ]]; then
-		# if this is an email then use the mapping table (defined in ~/.trellorc)
+		# if this is an email then use the mapping table (defined in CONFIG)
 		usrname=$(awk -F "=" "/^$BASH_REMATCH/ { print \$2 }" "$ITTeamUsers")
-		[ -n "$usrname" ] && uid=$(boardUID "$usrname" "$2")
-		[ -n "$usrname" ] || uid=""
+		[ -n "$usrname" ] && uID=$(boardUID "$usrname" "$2")
 	else
 		# try matching on full name and fallback to Trello user name
 		usrname=$(boardUName "$1" "$2")
 		if [ -n "$usrname" ]; then
-			uid=$(boardUID "$usrname" "$2")
+			uID=$(boardUID "$usrname" "$2")
 		else
 			usrname=$(tolower "$1")
-			uid=$(boardUID "$usrname" "$2")
+			uID=$(boardUID "$usrname" "$2")
 		fi
 	fi
-	[ -n "$uid" ] && echo ',"idMembers":"'"$uid"'"'
+	if [ -n "$uID" ]; then
+		toJSONstr "idMembers" "$uID"
+		echo ""
+	fi
 }
 
 # -----------------------------------
@@ -617,7 +673,7 @@ case $1 in
 		exit 0
 		;;
 	"normaliseLabels")
-		[ $DEBUG ] && normaliseLabels "$2" "$3"
+		[ $DEBUG ] && normaliseLabels "$2" "$3" "$4"
 		exit 0
 		;;
 	"normaliseOwner")
