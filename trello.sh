@@ -518,7 +518,7 @@ function version() {
 # Spit an error message and quit
 # $1 <== error message text
 function die() {
-	echo "trello: $1" >&2
+  echo "$(basename "$0") / $(date): $1" >&2
 	exit 1
 }
 
@@ -526,48 +526,50 @@ function die() {
 # Trow an usage message out
 function usage() {
 	cat <<End-of-message
-Usage: $(basename "$0") <command> [<args>]
+Usage: $(basename "$0") <command> [ <args> ]
 
-Execute commands on Trello and RT
-Commands and parameters are positional and case sensitive; they must be entered in the order shown
+Execute commands on Trello.  Some of these commands take data from RT and/or interoperate with RT.
+Commands are given as the first argument of the command line, followed by options specific to each command.
 
-Commands:
-   boards                                       Show all active boards accessible to this user
-   boardID <b>                                  Show Trello ID of the given board
-   lists <b>                                    Show Trello Lists defined in the given board
-   listID <b> <l>                               Show Trello ID of a given list in the given board
-   cards <b>                                    Show Trello cards defined in the given board
-   cardID <b> <c>                               Show Trello ID from given board name and card name
-   members <b>                                  Show members of a given board name
-   memberName <n> <b>                           Show Trello user name given member full name and board
-   memberID <n> <b>                             Show Trello user ID given member full name and board
-   addCard <b> <l> <c> <de> <dd> <lb> <ow>      Create new Trello card with the given attributes
-   addFromRT <b> <l> <#>                        Create new Trello card with data from the given RT ticket
-   addFromRTQry <b> <l> <sq>                    Create a Trello card for each ticket result of the given RT query
-   syncFromRT <b> <--noFix|--Fix> [--noSubj]    Compare cards on the given board and update them from their RT tickets
-   help                                         Show this help text
-   version                                      Show version number
+Commands and their accepted options:
+   boards                             Show all active boards accessible to this user
+   boardID -b                         Show Trello ID of the given board
+   lists -b                           Show Trello Lists defined in the given board
+   listID -b -l                       Show Trello ID of a given list in the given board
+   cards -b                           Show Trello cards defined in the given board
+   cardID -b -c                       Show Trello ID from given board name and card name
+   members -b                         Show members of a given board name
+   memberName -b -m                   Show Trello user name given member full name and board
+   memberID -b -m                     Show Trello user ID given member full name and board
+   addCard -b -l -c -t -d -u -o -r    Create new Trello card with the given attributes
+   addFromRT -b -l -#                 Trello card with data from the given RT ticket
+   addFromRTQry -b -l -s              Create a Trello card for each ticket result of the given RT query
+   syncFromRT -b -X                   Compare cards on the given board and update them from their RT tickets
+   help                               Show this help text
+   version                            Show version number
 
-Arguments:
-   <b>     Board name
-   <l>     List name
-   <c>     Card name
-   <n>     Trello member full name
-   <de>    Description
-   <dd>    Due Date <yyyy-mm-dd>
-   <lb>    Label colour
-   <ow>    Owner email
-   <#>     RT Ticket number
-   <sq>    RT TicketSQL statement
+Options:
+   -b <board>       Board name
+   -l <list>        List name
+   -c <card>        Card name
+   -m <member>      Trello member full name
+   -t <text>        Description
+   -d <yyyy-mm-dd>  Due Date
+   -u <colour>      Label colour
+   -o <user@mail>   Owner email
+   -# <#>           RT Ticket number
+   -s <ticketSql>   RT TicketSQL statement
+   -r <type>        RT Request Type
+   -X               Don't execute any changes - just log them (for "syncFromRT") 
 
-Configuration (read from /etc/trellorc, etc/trellorc, ~/.trellorc):
-   TrelloURI       Trello API endpoint
-   TrelloAPIkey    Trello API key (https://trello.com/docs/gettingstarted/index.html#getting-an-application-key)
-   TrelloToken     Trello authorisation token
-   rtServer        RT server URL
-   rtUser          RT user ID
-   rtPass          RT password
-   ITTeamUsers     Pathname of file mapping RT emails to Trello usernames (for IT team members)
+Configuration (read from /etc/trellorc, etc/trellorc, ~/.trellorc in this order):
+   TrelloURI        Trello API endpoint
+   TrelloAPIkey     Trello API key (https://trello.com/docs/gettingstarted/index.html#getting-an-application-key)
+   TrelloToken      Trello authorisation token
+   rtServer         RT server URL
+   rtUser           RT user ID
+   rtPass           RT password
+   ITTeamUsers      Pathname of file mapping RT emails to Trello usernames
 
 End-of-message
 }
@@ -590,70 +592,119 @@ End-of-message
 #
 # Process command-line arguments
 [ $# -lt 1 ] && usage && exit 1
-case $1 in
+proc=$(basename "$0")
+cmd="$1"; shift
+while getopts ":b:c:d:l:m:o:r:s:t:u:#:X" o; do
+  case "${o}" in
+    b)
+      board="${OPTARG}"
+      ;;
+    c)
+      card="${OPTARG}"
+      ;;
+    d)
+      dueDate="${OPTARG}"
+      ;;
+    l)
+      list="${OPTARG}"
+      ;;
+    m)
+      memberName="${OPTARG}"
+      ;;
+    o)
+      ownerEmail="${OPTARG}"
+      ;;
+    r)
+      rType="${OPTARG}"
+      ;;
+    s)
+      ticketSQL="${OPTARG}"
+      ;;
+    t)
+      text="${OPTARG}"
+      ;;
+    u)
+      colour="${OPTARG}"
+      ;;
+    X)
+      noFix=1
+      ;;
+    "#")
+      ticketID="${OPTARG}"
+      ;;
+    *)
+      usage
+      exit 1
+      ;;
+  esac
+done
+
+#
+# Execute command
+case "$cmd" in
 	"boards")
 		boards
 		;;
 	"boardID")
-		[ -n "$2" ] || die "Usage: $0 boardID <boardName>"
-		boardID "$2"
+		[ -n "$board" ] || die "Usage: $proc boardID -b <boardName>"
+		boardID "$board"
 		;;
 	"lists")
-		[ -n "$2" ] || die "Usage: $0 lists <boardName>"
-		lists "$2"
+		[ -n "$board" ] || die "Usage: $proc lists -b <boardName>"
+		lists "$board"
 		;;
 	"listID")
-		[ -n "$2" ] || die "Usage: $0 listID <boardName> <listName>"
-		[ -n "$3" ] || die "Usage: $0 listID <boardName> <listName>"
-		listID "$2" "$3"
+		[ -n "$board" ] || die "Usage: $proc listID -b <boardName> -l <listName>"
+		[ -n  "$list" ] || die "Usage: $proc listID -b <boardName> -l <listName>"
+		listID "$board" "$list"
 		;;
 	"cards")
-		[ -n "$2" ] || die "Usage: $0 cards <boardName>"
-		cards "$2"
+		[ -n "$board" ] || die "Usage: $proc cards -b <boardName>"
+		cards "$board"
 		;;
 	"cardID")
-		[ -n "$2" ] || die "Usage: $0 cardID <boardName> <cardName>"
-		[ -n "$3" ] || die "Usage: $0 cardID <boardName> <cardName>"
-		cardID "$2" "$3"
+		[ -n "$board" ] || die "Usage: $proc cardID -b <boardName> -c <cardName>"
+		[ -n  "$card" ] || die "Usage: $proc cardID -b <boardName> -c <cardName>"
+		cardID "$board" "$card"
 		;;
 	"members")
-		[ -n "$2" ] || die "Usage: $0 members <boardName"
-		boardMembers "$2"
+		[ -n "$board" ] || die "Usage: $proc members -b <boardName>"
+		boardMembers "$board"
 		;;
 	"memberName")
-		[ -n "$2" ] || die "Usage: $0 memberName <fullName> <boardName>"
-		[ -n "$3" ] || die "Usage: $0 memberName <fullName> <boardName>"
-		boardUName "$2" "$3"
+		[ -n      "$board" ] || die "Usage: $proc memberName -m <fullName> -b <boardName>"
+		[ -n "$memberName" ] || die "Usage: $proc memberName -m <fullName> -b <boardName>"
+		boardUName "$memberName" "$board"
 		;;
 	"memberID")
-		[ -n "$2" ] || die "Usage: $0 memberID <fullName> <boardName>"
-		[ -n "$3" ] || die "Usage: $0 memberID <fullName> <boardName>"
-		usrname=$(boardUName "$2" "$3")
-		boardUID "$usrname" "$3"
+		[ -n      "$board" ] || die "Usage: $proc memberID -m <fullName> -b <boardName>"
+		[ -n "$memberName" ] || die "Usage: $proc memberID -m <fullName> -b <boardName>"
+		usrname=$(boardUName "$memberName" "$board")
+		boardUID "$usrname" "$board"
 		;;
 	"addCard")
-		[ -n "$2" ] || die "Usage: $0 addCard <boardName> <listName> [ <cardName> <description> <due date> <colour> <type> <owner> ]"
-		[ -n "$3" ] || die "Usage: $0 addCard <boardName> <listName> [ <cardName> <description> <due date> <colour> <type> <owner> ]"
-		addTrelloCard "$2" "$3" "$4" "$5" "$6" "$7" "$8" "$9"
+		[ -n "$board" ] || die "Usage: $proc addCard -b <boardName> -l <listName> [ -c <cardName> -t <Description> -d <DueDate> -u <Colour> -r <reqType> -o <Owner> ]"
+		[ -n  "$list" ] || die "Usage: $proc addCard -b <boardName> -l <listName> [ -c <cardName> -t <Description> -d <DueDate> -u <Colour> -r <reqType> -o <Owner> ]"
+		addTrelloCard "$board" "$list" "$card" "$text" "$dueDate" "$colour" "$rType" "$ownerEmail"
 		;;
 	"addFromRT")
-		[ -n "$2" ] || die "Usage: $0 addFromRT <boardName> <listName> <rtTicket#>"
-		[ -n "$3" ] || die "Usage: $0 addFromRT <boardName> <listName> <rtTicket#>"
-		[ -n "$4" ] || die "Usage: $0 addFromRT <boardName> <listName> <rtTicket#>"
+		[ -n    "$board" ] || die "Usage: $proc addFromRT -b <boardName> -l <listName> -# <rtTicket#>"
+		[ -n     "$list" ] || die "Usage: $proc addFromRT -b <boardName> -l <listName> -# <rtTicket#>"
+		[ -n "$ticketID" ] || die "Usage: $proc addFromRT -b <boardName> -l <listName> -# <rtTicket#>"
 		isRTup; [ $? == 0 ] || die "Can't reach RT server.  VPN, maybe?"
-		addFromRT "$2" "$3" "$4"
+		addFromRT "$board" "$list" "$ticketID"
 		;;
 	"addFromRTQry")
-		[ -n "$2" ] || die "Usage: $0 addFromRTQry <boardName> <listName> <rtTicketSQLQuery>"
-		[ -n "$3" ] || die "Usage: $0 addFromRTQry <boardName> <listName> <rtTicketSQLQuery>"
-		[ -n "$4" ] || die "Usage: $0 addFromRTQry <boardName> <listName> <rtTicketSQLQuery>"
+		[ -n     "$board" ] || die "Usage: $proc addFromRTQry -b <boardName> -l <listName> -s <rtTicketSQLQuery>"
+		[ -n      "$list" ] || die "Usage: $proc addFromRTQry -b <boardName> -l <listName> -s <rtTicketSQLQuery>"
+		[ -n "$ticketSQL" ] || die "Usage: $proc addFromRTQry -b <boardName> -l <listName> -s <rtTicketSQLQuery>"
 		isRTup; [ $? == 0 ] || die "Can't reach RT server.  VPN, maybe?"
-		addFromRTqry "$2" "$3" "$4"
+		addFromRTqry "$board" "$list" "$ticketSQL"
 		;;
 	"syncFromRT")
-		[ -n "$2" ] || die "Usage: $0 syncFromRT <boardName> [ --noFix | --Fix ] [ --noSubj ]"
+		[ -n "$board" ] || die "Usage: $proc syncFromRT -b <boardName> [ -X ]"
 		isRTup; [ $? == 0 ] || die "Can't reach RT server.  VPN, maybe?"
-		syncFromRT "$2" "$3" "$4"
+		syncFromRT "$board" "$noFix"
 		;;
 	"help")
 		usage
