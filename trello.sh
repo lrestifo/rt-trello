@@ -138,7 +138,7 @@ function normaliseLabels() {
 		if [ ${#l[*]} -gt 0 ]; then
 			echo -n '"labels":'
 			toJSONarr "${l[@]}"
-			echo ""
+			[ "$DEBUG" ] && echo ""
 		fi
 	fi
 }
@@ -171,7 +171,7 @@ function normaliseOwner() {
 	fi
 	if [ -n "$uID" ]; then
 		toJSONstr "idMembers" "$uID"
-		echo ""
+		[ "$DEBUG" ] && echo ""
 	fi
 }
 
@@ -508,8 +508,8 @@ function logd() {
 #
 # Display version number info
 function version() {
-	echo "$1 0.1.0"
-	[ "$DEBUG" ] && echo " Debugging mode enabled"
+	echo "$1 0.2.0"
+  [ "$DEBUG" ] && echo "$(tput smso)$(tput setaf 3)Debugging mode enabled$(tput sgr0)"
 	curl --version
 	jq --version
 }
