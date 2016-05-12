@@ -24,6 +24,8 @@
 #				red		new, open
 #				yellow	stalled, waiting
 #		3. Owner is only set in Trello for IT team members
+#		Valid color codes for Trello labels:
+#			http://help.trello.com/article/797-adding-labels-to-cards
 # Caveats:
 #		The only attributes of a Trello card that can be updated by this script are
 #		Status (mapped to label color), Owner, Due Date, Subject
@@ -92,7 +94,7 @@ function toJSONarr() {
 # Build the correct JSON string for the labels attribute
 # $1 <== RT ticket status (or color)
 # $2 <== RT request type (or color) (or empty)
-# $3 <== RT ticket priority (or color) (or empty)
+# $3 <== RT ticket priority (numeric)
 # If $1 is empty, returns and empty string
 function normaliseLabels() {
 	declare -a l
@@ -123,6 +125,9 @@ function normaliseLabels() {
 			"change"|"change request"|"change_request")
 				l[1]="purple"
 				;;
+			"task"|"project task"|"project_task")
+				l[1]="blue"
+				;;
 			*)
 				[ -n "$tReq" ] && l[1]="$tReq"
 				;;
@@ -130,7 +135,7 @@ function normaliseLabels() {
 		# Priority
 		if [ -n "$tPri" ]; then
 			if [ "$tPri" -ge 30 -a "$tPri" -lt 40 ]; then
-				l[2]="blue"
+				l[2]="light green"
 			elif [ "$tPri" -ge 40 ]; then
 				l[2]="pink"
 			fi
@@ -147,7 +152,7 @@ function normaliseLabels() {
 # $1 <== either Trello username or Esselte email address, $2 <== board name
 function normaliseOwner() {
 	uID=""
-	# for the email mathing regex: http://stackoverflow.com/questions/14170873/bash-regex-email-matching
+	# for the email matching regex: http://stackoverflow.com/questions/14170873/bash-regex-email-matching
 	char='[[:alnum:]!#\$%&'\''\*\+/=?^_\`{|}~-]'
 	name_part="${char}+(\.${char}+)*"
 	domain="([[:alnum:]]([[:alnum:]-]*[[:alnum:]])?\.)+[[:alnum:]]([[:alnum:]-]*[[:alnum:]])?"
@@ -265,7 +270,8 @@ function trelloUIDfromRTEmail() {
 # Create a new Trello card in a given board and place it under a given list
 # Return the newly created card ID
 # $1 <== board name, $2 <== list name,
-# $3 <== new card name, $4 <== description, $5 <== due date, $6 <== label color, $7 <== type color, $8 <== owner
+# $3 <== new card name, $4 <== description, $5 <== due date, $6 <== label color, $7 <== type color,
+# $8 <== owner, $9 <== priority color
 # due date format yyyy-mm-dd
 # label color is either a color or a status
 # type color is either empty, a color or the RT ticket type attribute ("change_request)"
@@ -276,7 +282,7 @@ function addTrelloCard() {
 	[ -n "$3" ] && ttData="$ttData"',"name":"'$3'"'
 	[ -n "$4" ] && ttData="$ttData"',"desc":"'$4'"'
 	[ -n "$5" ] && ttData="$ttData"',"due":"'$5'"'
-	[ -n "$6" ] && ttData="$ttData"$(normaliseLabels "$6" "$7")
+	[ -n "$6" ] && ttData="$ttData"$(normaliseLabels "$6" "$7" "$9")
 	[ -n "$8" ] && ttData="$ttData"$(normaliseOwner "$8" "$1")
 	ttData="$ttData}"
 	curl --silent --request POST --header "Content-Type: application/json" --data "$ttData" --url "$TrelloURI/cards?key=$TrelloAPIkey&token=$TrelloToken" | jq -r '{id} | .id'
@@ -285,11 +291,12 @@ function addTrelloCard() {
 #
 # Read and store attributes of a given Trello card
 # $1 <== card id, $2 <== card data, $3 <== ticket id
-# Sets: $ttSubj, $ttStat, $ttDue, $ttList, $ttType, $ttOwner
+# Sets: $ttSubj, $ttStat, $ttDue, $ttList, $ttType, $ttOwner, $$ttPrio
 function readTrelloCard() {
 	ttSubj=$(echo "$2" | jq -r '.name' | awk '{ gsub(/'"$3"': /,""); print }')
 	ttStat=$(echo "$2" | jq -r '.labels | .[0] | .name')
 	ttType=$(echo "$2" | jq -r '.labels | .[1] | .name')
+	ttPrio=$(echo "$2" | jq -r '.labels | .[2] | .name')
 	ttDue=$(echo "$2" | jq -r '.due' | awk '{ print substr($0,1,10) }')
 	ttList=$(curl --silent --url "$TrelloURI/cards/$1/list?fields=name&key=$TrelloAPIkey&token=$TrelloToken" | jq -r '.name')
 	ttOwner=$(curl --silent --url "$TrelloURI/cards/$1/members?fields=username&key=$TrelloAPIkey&token=$TrelloToken" | jq -r '.[0] | .username')
@@ -299,7 +306,7 @@ function readTrelloCard() {
 #
 # Update attributes of a given Trello card
 # $1 <== board name, $2 <== card id, $3 <== new card name, $4 <== description,
-# $5 <== due date, $6 <== label color, $7 <== type color, $8 <== owner
+# $5 <== due date, $6 <== label color, $7 <== type color, $8 <== owner, $9 <== priority
 # Non-empty arguments will update the corresponding attribute in Trello
 function updTrelloCard() {
 	c="$2"
@@ -323,11 +330,11 @@ function updTrelloCard() {
 	if [ -n "$6" ]; then
 		logd "Updating card 1st color attribute"
 		case $(tolower "$6") in
-			"new"|"open")			c1="red"	;;
-			"user_testing")			c1="orange"	;;
-			"stalled"|"waiting")	c1="yellow"	;;
+			"new"|"open")						c1="red"		;;
+			"user_testing")					c1="orange"	;;
+			"stalled"|"waiting")		c1="yellow"	;;
 			"resolved"|"rejected")	c1="green"	;;
-			*)						c1="$6"		;;
+			*)											c1="$6"		;;
 		esac
 		c2=$(curl --silent --url "$TrelloURI/cards/$c?key=$TrelloAPIkey&token=$TrelloToken" | jq -r '.labels | .[1] | .color')
 		if [ -n "$c2" ]; then
@@ -343,7 +350,8 @@ function updTrelloCard() {
 		c1=$(curl --silent --url "$TrelloURI/cards/$c?key=$TrelloAPIkey&token=$TrelloToken" | jq -r '.labels | .[0] | .color')
 		case $(tolower "$7") in
 			"change"|"change request")	c2="purple"	;;
-			*)							c2="$7"		;;
+			"task"|"project task")			c2="blue"		;;
+			*)													c2="$7"			;;
 		esac
 		v=$(urlencode "$c1,$c2")
 		cID=$(curl --silent --request PUT --url "$TrelloURI/cards/$c/labels?value=$v&key=$TrelloAPIkey&token=$TrelloToken" | jq -r '{id} | .id')
@@ -353,6 +361,23 @@ function updTrelloCard() {
 		logd "Updating card owner"
 		v=$(boardUID "$8" "$1")
 		cID=$(curl --silent --request PUT --url "$TrelloURI/cards/$c/idMembers?value=$v&key=$TrelloAPIkey&token=$TrelloToken" | jq -r '{id} | .id')
+		[ "$cID" == "$c" ] && echo "Fixed."
+	fi
+	if [ -n "$9" ]; then
+		logd "Updating card 3rd color attribute"
+		c1=$(curl --silent --url "$TrelloURI/cards/$c?key=$TrelloAPIkey&token=$TrelloToken" | jq -r '.labels | .[0] | .color')
+		c2=$(curl --silent --url "$TrelloURI/cards/$c?key=$TrelloAPIkey&token=$TrelloToken" | jq -r '.labels | .[1] | .color')
+		if [ "$9" -ge 30 -a "$9" -lt 40 ]; then
+				c3="light green"
+			elif [ "$9" -ge 40 ]; then
+				c3="pink"
+		fi
+		if [ -n "$c2" ]; then
+			v=$(urlencode "$c1,$c2,$c3")
+		else
+			v=$(urlencode "$c1,$c3")
+		fi
+		cID=$(curl --silent --request PUT --url "$TrelloURI/cards/$c/labels?value=$v&key=$TrelloAPIkey&token=$TrelloToken" | jq -r '{id} | .id')
 		[ "$cID" == "$c" ] && echo "Fixed."
 	fi
 }
@@ -374,7 +399,7 @@ function isRTup() {
 #
 # Read and store attributes of a given RT ticket
 # $1 <== ticket id
-# Sets: $rtSubj, $rtStat, $rtDue, $rtType, $rtOwner, $rtOwnerEmail, $rtOwnerTrello, $rtRequestor
+# Sets: $rtSubj, $rtStat, $rtDue, $rtType, $rtOwner, $rtOwnerEmail, $rtOwnerTrello, $rtRequestor, $rtPrio
 function readRTTicket() {
 	tData=$(curl --basic --user "$rtUser:$rtPass" --silent --url "$rtServer/REST/1.0/ticket/$1/show?user=$rtUser&pass=$rtPass")
 	rtSubj=$(echo "$tData" | awk '/^Subject: / { gsub(/^Subject: /,""); print }')
@@ -394,6 +419,7 @@ function readRTTicket() {
 		rtOwnerEmail=$(curl --basic --user "$rtUser:$rtPass" --silent --url "$rtServer/REST/1.0/user/$rtOwner/show?user=$rtUser&pass=$rtPass" | awk '/^EmailAddress: / { gsub(/^EmailAddress: /,""); print }')
 		rtOwnerTrello=$(trelloUIDfromRTEmail "$rtOwnerEmail")
 	fi
+	rtPrio=$(echo "$tData" | awk '/^Priority: / { gsub(/^Priority: /,""); print }')
 	# rtRequestor=$(echo "$tData" | awk '/^Requestors: / { gsub(/^Requestors: /,""); print }')
 }
 
@@ -423,11 +449,12 @@ function compareAttr() {
 		elif [ "$7" == "--Fix" ]; then
 			echo -n " ... "
 			case "$5" in
-				"Subject")	updTrelloCard "$1" "$8" "$2: $4"				;;
-				"Due Date")	updTrelloCard "$1" "$8" "" "" "$4"				;;
-				"Status")	updTrelloCard "$1" "$8" "" "" "" "$4"			;;
-				"Request Type")	updTrelloCard "$1" "$8" "" "" "" "" "$4"		;;
-				"Owner")	updTrelloCard "$1" "$8" ""	"" "" "" "" "$4"	;;
+				"Subject")			updTrelloCard "$1" "$8" "$2: $4"								;;
+				"Due Date")			updTrelloCard "$1" "$8" "" "" "$4"							;;
+				"Status")				updTrelloCard "$1" "$8" "" "" "" "$4"						;;
+				"Request Type")	updTrelloCard "$1" "$8" "" "" "" "" "$4"				;;
+				"Owner")				updTrelloCard "$1" "$8" "" "" "" "" "" "$4"			;;
+				"Priority")			updTrelloCard "$1" "$8" "" "" "" "" "" "" "$4"	;;
 			esac
 		else
 			echo "."
@@ -456,17 +483,18 @@ function syncFromRT() {
 		if [ -n "$ttID" ]; then
 			readTrelloCard "$c" "$cData" "$ttID"
 			readRTTicket "$ttID"
-			logd "Trello=>/$ttID/$ttSubj/$ttStat/$ttDue/$ttType/$ttOwner"
-			logd "RTRTRT=>|$ttID|$rtSubj|$rtStat|$rtDue|$rtType|$rtOwnerTrello"
+			logd "Trello=>/$ttID/$ttSubj/$ttStat/$ttDue/$ttType/$ttOwner/$ttPrio"
+			logd "RTRTRT=>|$ttID|$rtSubj|$rtStat|$rtDue|$rtType|$rtOwnerTrello|$rtPrio"
 			[ "$3" != "--noSubj" ] && compareAttr "$1" "$ttID" "$ttSubj" "$rtSubj" "Subject" "$ttList" "$2" "$c"
 			compareAttr "$1" "$ttID" "$ttDue" "$rtDue" "Due Date" "$ttList" "$2" "$c"
 			compareAttr "$1" "$ttID" "$ttOwner" "$rtOwnerTrello" "Owner" "$ttList" "$2" "$c"
 			compareAttr "$1" "$ttID" "$ttStat" "$rtStat" "Status" "$ttList" "$2" "$c"
-			if [ "$rtType" == "Change request" ] ; then
+			if [ "$rtType" == "Change request" -o "$rtType" == "Project task" ] ; then
 				compareAttr "$1" "$ttID" "$ttType" "$rtType" "Request Type" "$ttList" "$2" "$c"
 			else
 				compareAttr "$1" "$ttID" "$ttType" "null" "Request Type" "$ttList" "$2" "$c"
 			fi
+			compareAttr "$1" "$ttID" "$ttPrio" "$rtPrio" "Priority" "$ttList" "$2" "$c"
 		fi
 	done
 }
@@ -476,7 +504,7 @@ function syncFromRT() {
 # $1 <== board name, $2 <== list name, $3 <== RT ticket id
 function addFromRT() {
 	readRTTicket "$3"
-	addTrelloCard "$1" "$2" "$3: $rtSubj" "$rtServer/Ticket/Display.html?id=$3" "$rtDue" "$rtStat" "$rtType" "$rtOwnerTrello"
+	addTrelloCard "$1" "$2" "$3: $rtSubj" "$rtServer/Ticket/Display.html?id=$3" "$rtDue" "$rtStat" "$rtType" "$rtOwnerTrello" "$rtPrio"
 }
 
 #
