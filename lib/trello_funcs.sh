@@ -573,7 +573,7 @@ Commands and their accepted options:
    addFromRT -b -l -#                 Trello card with data from the given RT ticket
    addFromRTQry -b -l -s              Create a Trello card for each ticket result of the given RT query
    syncFromRT -b -X                   Compare cards on the given board and update them from their RT tickets
-	 boardTickets -b										List all tickets present on the given board
+   boardTickets -b                    List all tickets present on the given board
    help                               Show this help text
    version                            Show version number
 
@@ -609,6 +609,6 @@ End-of-message
 function boardTickets() {
 	for b in $(boardID "$1")
 	do
-		$curl --url "$TrelloURI/boards/$b/cards?key=$TrelloAPIkey&token=$TrelloToken" | jq -r '.name' | awk -F: '/^[1-9][0-9]+:/ { print $1 }'
+		$curl --url "$TrelloURI/boards/$b/cards?key=$TrelloAPIkey&token=$TrelloToken" | jq -r '.[] | .name' | awk -F: '/^[1-9][0-9]+:/ { print $1 }'
 	done
 }
