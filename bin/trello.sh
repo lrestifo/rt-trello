@@ -169,6 +169,10 @@ case "$cmd" in
 		isRTup; [ $? == 0 ] || die "Can't reach RT server.  VPN, maybe?"
 		syncFromRT "$board" "$noFix"
 		;;
+  "boardTickets")
+    [ -n "$board" ] || die "Usage: $proc boardTickets -b <boardName>"
+    boardTickets "$board"
+    ;;
 	"help")
 		usage
 		exit 0

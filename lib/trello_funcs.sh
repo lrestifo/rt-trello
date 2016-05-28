@@ -573,6 +573,7 @@ Commands and their accepted options:
    addFromRT -b -l -#                 Trello card with data from the given RT ticket
    addFromRTQry -b -l -s              Create a Trello card for each ticket result of the given RT query
    syncFromRT -b -X                   Compare cards on the given board and update them from their RT tickets
+	 boardTickets -b										List all tickets present on the given board
    help                               Show this help text
    version                            Show version number
 
@@ -600,4 +601,14 @@ Configuration (read from /etc/trellorc, etc/trellorc, ~/.trellorc in this order)
    ITTeamUsers      Pathname of file mapping RT emails to Trello usernames
 
 End-of-message
+}
+
+#
+# Output a list of all ticket IDs contained in a given board.  No output if board not found
+# $1 <== board name
+function boardTickets() {
+	for b in $(boardID "$1")
+	do
+		$curl --url "$TrelloURI/boards/$b/cards?key=$TrelloAPIkey&token=$TrelloToken" | jq -r '.name' | awk -F: '/^[1-9][0-9]+:/ { print $1 }'
+	done
 }
