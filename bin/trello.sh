@@ -169,6 +169,13 @@ case "$cmd" in
 		isRTup; [ $? == 0 ] || die "Can't reach RT server.  VPN, maybe?"
 		syncFromRT "$board" "$noFix"
 		;;
+  "newFromRTQry")
+    [ -n     "$board" ] || die "Usage: $proc newFromRTQry -b <boardName> -l <listName> -s <rtTicketSQLQuery>"
+    [ -n      "$list" ] || die "Usage: $proc newFromRTQry -b <boardName> -l <listName> -s <rtTicketSQLQuery>"
+    [ -n "$ticketSQL" ] || die "Usage: $proc newFromRTQry -b <boardName> -l <listName> -s <rtTicketSQLQuery>"
+    isRTup; [ $? == 0 ] || die "Can't reach RT server.  VPN, maybe?"
+    newFromRTqry "$board" "$list" "$ticketSQL"
+    ;;
   "boardTickets")
     [ -n "$board" ] || die "Usage: $proc boardTickets -b <boardName>"
     boardTickets "$board"

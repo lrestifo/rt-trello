@@ -522,6 +522,38 @@ function addFromRTqry() {
 }
 
 #
+# Run a given RT query resulting in a set of tickets and add the
+# corresponding cards to a given list in a given board - only adding those
+# cards that are not already present in the board
+# $1 <== board name, $2 <== list name, $3 <== query string
+function newFromRTqry() {
+	q=$(urlencode "$3")
+	cmd="curl --basic --user $rtUser:$rtPass --silent --url $rtServer/REST/1.0/search/ticket?query=$q&orderby=+id&format=i&user=$rtUser&pass=$rtPass"
+	for t in $($cmd | awk -F "/" '/^ticket\// { print $2 }')
+	do
+		tExists=0
+		for bT in $(boardTickets "$1")
+		do
+			[ $t == $bT ] && tExists=1
+		done
+		if !$tExists; then
+			cID=$(addFromRT "$1" "$2" "$t")
+			log "RT Ticket $t ==> Trello Card $cID"
+		fi
+	done
+}
+
+#
+# Output a list of all ticket IDs contained in a given board.  No output if board not found
+# $1 <== board name
+function boardTickets() {
+	for b in $(boardID "$1")
+	do
+		$curl --url "$TrelloURI/boards/$b/cards?key=$TrelloAPIkey&token=$TrelloToken" | jq -r '.[] | .name' | awk -F: '/^[1-9][0-9]+:/ { print $1 }'
+	done
+}
+
+#
 # Output date&timestamped message
 function log() {
 	echo "$(date): $1"
@@ -573,6 +605,7 @@ Commands and their accepted options:
    addFromRT -b -l -#                 Trello card with data from the given RT ticket
    addFromRTQry -b -l -s              Create a Trello card for each ticket result of the given RT query
    syncFromRT -b -X                   Compare cards on the given board and update them from their RT tickets
+   newFromRTQry -b -l -s              Create a card for each ticket result of the given RT query not already on the board
    boardTickets -b                    List all tickets present on the given board
    help                               Show this help text
    version                            Show version number
@@ -589,9 +622,9 @@ Options:
    -# <#>           RT Ticket number
    -s <ticketSql>   RT TicketSQL statement
    -r <type>        RT Request Type
-   -X               Don't execute any changes - just log them (for "syncFromRT")
+   -X               Don't execute any changes - just log them (for "syncFromRT" only)
 
-Configuration (read from /etc/trellorc, etc/trellorc, ~/.trellorc in this order):
+Configuration (read from /etc/trellorc, ./etc/trellorc, ~/.trellorc in this order):
    TrelloURI        Trello API endpoint
    TrelloAPIkey     Trello API key (https://trello.com/docs/gettingstarted/index.html#getting-an-application-key)
    TrelloToken      Trello authorisation token
@@ -601,14 +634,4 @@ Configuration (read from /etc/trellorc, etc/trellorc, ~/.trellorc in this order)
    ITTeamUsers      Pathname of file mapping RT emails to Trello usernames
 
 End-of-message
-}
-
-#
-# Output a list of all ticket IDs contained in a given board.  No output if board not found
-# $1 <== board name
-function boardTickets() {
-	for b in $(boardID "$1")
-	do
-		$curl --url "$TrelloURI/boards/$b/cards?key=$TrelloAPIkey&token=$TrelloToken" | jq -r '.[] | .name' | awk -F: '/^[1-9][0-9]+:/ { print $1 }'
-	done
 }
