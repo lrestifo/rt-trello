@@ -4,37 +4,9 @@
 # Name:		TRELLO -- Command interface to selected parts of the Trello API
 # Author:	Tue Aug 26 21:10:56 UTC 2014 Luciano Restifo <lrestifo@esselte.com>
 # Description:
-#		This script allows to read and manipulate data in Trello from the shell
-#		command line.  Only a specific set of commands have been implemented (see
-#		Commands below).  The script requires a number of configuration parameters
-#		to be defined (see Configuration below).  Additionally, the script can
-#		interact with RT and exchange data between RT and Trello
-# Configuration:
-#		<insert documentation here>
-# Commands:
-#		<insert documentation here>
-# Assumptions:
-#		The script reads and process data from Trello cards assuming cards data is
-#		formatted according to known conventions.  In particular:
-#		1. Trello card names follow the pattern <RTTicket#>: <Subject>
-#		2. RT ticket status is mapped to card labels as follows:
-#				green	resolved, rejected
-#				orange	user_testing
-#				purple	change request
-#				red		new, open
-#				yellow	stalled, waiting
-#		3. Owner is only set in Trello for IT team members
-#		Valid color codes for Trello labels:
-#			http://help.trello.com/article/797-adding-labels-to-cards
-# Caveats:
-#		The only attributes of a Trello card that can be updated by this script are
-#		Status (mapped to label color), Owner, Due Date, Subject
-# Requirements:
-#		bash	This script uses function()s
-#		curl	To query REST APIs
-#		jq		To parse JSON
-#		awk		To parse plain text
-#		perl	To urlencode
+#		This module is integral part of the TRELLO.SH bash script and is included
+#		into that script during runtime.  It provides the bulk functionality and
+#		executes the tasks specified on the main module's command line
 #
 ###############################################################################
 
@@ -125,11 +97,8 @@ function normaliseLabels() {
 			"change"|"change request"|"change_request")
 				l[1]="purple"
 				;;
-			"task"|"project task"|"project_task")
-				l[1]="blue"
-				;;
 			*)
-				[ -n "$tReq" ] && l[1]="$tReq"
+				l[1]="black"
 				;;
 		esac
 		# Priority
@@ -387,7 +356,7 @@ function updTrelloCard() {
 # $1 <== board name, $2 <== card name
 function delTrelloCard() {
 	c=$(cardID "$1" "$2")
-	curl --silent --request DELETE --url "$TrelloURI/cards/$c?key=$TrelloAPIkey&token=$TrelloToken"
+	$curl --request DELETE --url "$TrelloURI/cards/$c?key=$TrelloAPIkey&token=$TrelloToken"
 }
 
 #
@@ -420,7 +389,7 @@ function readRTTicket() {
 		rtOwnerTrello=$(trelloUIDfromRTEmail "$rtOwnerEmail")
 	fi
 	rtPrio=$(echo "$tData" | awk '/^Priority: / { gsub(/^Priority: /,""); print }')
-	# rtRequestor=$(echo "$tData" | awk '/^Requestors: / { gsub(/^Requestors: /,""); print }')
+	rtRequestor=$(echo "$tData" | awk '/^Requestors: / { gsub(/^Requestors: /,""); print }')
 }
 
 #
@@ -441,6 +410,15 @@ function compareAttr() {
 		[ "$ro" == "rejected" ] && ro="resolved"
 		[ "$ro" == "waiting"  ] && ro="stalled"
 		[ "$ro" == "new" ] && ro="open"
+	fi
+	if [ "$5" == "Request Type" ]; then
+		# Only relevant for change requests
+		[ "$ro" != "change request" ] && ro=$lo
+	fi
+	if [ "$5" == "Priority" ]; then
+		# Only relevat for high and medium
+		[ "$ro" -ge 30 -a "$ro" -lt 40 ] && ro="light green"
+		[ "$ro" -ge 40 ] && ro="pink"
 	fi
 	if [ "$lo" != "$ro" ]; then
 		logn "Ticket #$2 (in '$6'): $5 change from Trello::'$3' to RT::'$4'"
@@ -568,7 +546,7 @@ function logd() {
 #
 # Display version number info
 function version() {
-	echo "$1 0.2.0"
+	echo "$1 0.2.1"
   [ "$DEBUG" ] && echo "$(tput smso)$(tput setaf 3)Debugging mode enabled$(tput sgr0)"
 	curl --version
 	jq --version

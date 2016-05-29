@@ -16,17 +16,25 @@
 # Assumptions:
 #		The script reads and process data from Trello cards assuming cards data is
 #		formatted according to known conventions.  In particular:
-#		1. Trello card names follow the pattern <RTTicket#>: <Subject>
-#		2. RT ticket status is mapped to card labels as follows:
-#				green	resolved, rejected
-#				orange	user_testing
-#				purple	change request
-#				red		new, open
-#				yellow	stalled, waiting
+#		1. Trello card names follow the pattern "<RTTicket#>: <Subject>"
+#		2. RT ticket status, priority and request type are mapped to card labels:
+#      Status:
+#				green        ==> resolved, rejected
+#				orange       ==> user_testing
+#				red          ==> new, open
+#				yellow       ==> stalled, waiting
+#      Priority:
+#				pink         ==> high priority (>= 40)
+#				light green  ==> medium priority (between 30 and 39)
+#      Request Type:
+#       purple       ==> change request
+#       black        ==> anything else
 #		3. Owner is only set in Trello for IT team members
+#		Valid color codes for Trello labels:
+#			http://help.trello.com/article/797-adding-labels-to-cards
 # Caveats:
 #		The only attributes of a Trello card that can be updated by this script are
-#		Status (mapped to label color), Owner, Due Date, Subject
+#		Status/Prio/Type (mapped to label color), Owner, Due Date, Subject
 # Requirements:
 #		bash	This script uses function()s
 #		curl	To query REST APIs
