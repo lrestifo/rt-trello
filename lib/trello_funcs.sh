@@ -340,12 +340,13 @@ function updTrelloCard() {
 				c3="light green"
 			elif [ "$9" -ge 40 ]; then
 				c3="pink"
+			else
+				c3=""
 		fi
-		if [ -n "$c2" ]; then
-			v=$(urlencode "$c1,$c2,$c3")
-		else
-			v=$(urlencode "$c1,$c3")
-		fi
+		cAll="$c1"
+		[ -n "$c2" ] && cAll="$cAll,$c2"
+		[ -n "$c3" ] && cAll="$cAll,$c3"
+		v=$(urlencode "$cAll")
 		cID=$(curl --silent --request PUT --url "$TrelloURI/cards/$c/labels?value=$v&key=$TrelloAPIkey&token=$TrelloToken" | jq -r '{id} | .id')
 		[ "$cID" == "$c" ] && echo "Fixed."
 	fi
@@ -413,12 +414,17 @@ function compareAttr() {
 	fi
 	if [ "$5" == "Request Type" ]; then
 		# Only relevant for change requests
-		[ "$ro" != "change request" ] && ro=$lo
+		[ "$ro" != "change request" ] && ro="$lo"
 	fi
 	if [ "$5" == "Priority" ]; then
 		# Only relevat for high and medium
-		[ "$ro" -ge 30 -a "$ro" -lt 40 ] && ro="light green"
-		[ "$ro" -ge 40 ] && ro="pink"
+		if [ "$ro" -ge 30 -a "$ro" -lt 40 ]; then
+			ro="light green"
+		elif [ "$ro" -ge 40 ]; then
+			ro="pink"
+		else
+			ro="$lo"
+		fi
 	fi
 	if [ "$lo" != "$ro" ]; then
 		logn "Ticket #$2 (in '$6'): $5 change from Trello::'$3' to RT::'$4'"
