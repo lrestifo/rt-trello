@@ -409,7 +409,7 @@ function readRTTicket() {
 #
 # Compare a given ticket attribute between RT and Trello and eventually fix the difference
 # $1 <== board name, $2 <== ticket id, $3 <== Trello value, $4 <== RT value,
-# $5 <== attribute name, $6 <== list name, $7 <== either "--noFix" or "--Fix", $8 <== card id
+# $5 <== attribute name, $6 <== list name, $7 <== either 1 (noFix) or "", $8 <== card id
 function compareAttr() {
 	logd "Compare $5"
 	lo=$(tolower "$3")
@@ -443,9 +443,7 @@ function compareAttr() {
 	fi
 	if [ "$lo" != "$ro" ]; then
 		logn "Ticket #$2 (in '$6'): $5 change from Trello::'$3' to RT::'$4'"
-		if [ "$7" == "--noFix" ]; then
-			echo "."
-		elif [ "$7" == "--Fix" ]; then
+		if [ "$7" == "1" ]; then
 			echo -n " ... "
 			case "$5" in
 				"Subject")			updTrelloCard "$1" "$8" "$2: $4"								;;
@@ -467,7 +465,7 @@ function compareAttr() {
 # Analyse all cards of a given board against corresponding RT tickets
 # output differences in any of the attributes whenever found
 # Attributes compared: subject, status, due date
-# $1 <== board name, $2 <== either "--noFix" or "--Fix", $3 <== "--noSubj" (optional)
+# $1 <== board name, $2 <== 1 means don't fix the difference
 function syncFromRT() {
 	logd "Reading board"
 	b=$(boardID "$1")
@@ -484,7 +482,7 @@ function syncFromRT() {
 			readRTTicket "$ttID"
 			logd "Trello=>/$ttID/$ttSubj/$ttStat/$ttDue/$ttType/$ttOwner/$ttPrio"
 			logd "RTRTRT=>|$ttID|$rtSubj|$rtStat|$rtDue|$rtType|$rtOwnerTrello|$rtPrio"
-			[ "$3" != "--noSubj" ] && compareAttr "$1" "$ttID" "$ttSubj" "$rtSubj" "Subject" "$ttList" "$2" "$c"
+			compareAttr "$1" "$ttID" "$ttSubj" "$rtSubj" "Subject" "$ttList" "$2" "$c"
 			compareAttr "$1" "$ttID" "$ttDue" "$rtDue" "Due Date" "$ttList" "$2" "$c"
 			compareAttr "$1" "$ttID" "$ttOwner" "$rtOwnerTrello" "Owner" "$ttList" "$2" "$c"
 			compareAttr "$1" "$ttID" "$ttStat" "$rtStat" "Status" "$ttList" "$2" "$c"
