@@ -104,7 +104,7 @@ function normaliseLabels() {
 		# Priority
 		if [ -n "$tPri" ]; then
 			if [ "$tPri" -ge 30 -a "$tPri" -lt 40 ]; then
-				l[2]="light green"
+				l[2]="blue"
 			elif [ "$tPri" -ge 40 ]; then
 				l[2]="pink"
 			fi
@@ -270,6 +270,10 @@ function readTrelloCard() {
 	ttList=$(curl --silent --url "$TrelloURI/cards/$1/list?fields=name&key=$TrelloAPIkey&token=$TrelloToken" | jq -r '.name')
 	ttOwner=$(curl --silent --url "$TrelloURI/cards/$1/members?fields=username&key=$TrelloAPIkey&token=$TrelloToken" | jq -r '.[0] | .username')
 	[ -z "$ttStat" ] && ttStat=$(echo "$2" | jq -r '.labels | .[0] | .color')
+    [ "$ttType" == "prio:high" -o "$ttType" == "prio:medium" ] && {
+        ttType="null"
+        ttPrio="$ttType"
+    }
 }
 
 #
@@ -313,15 +317,15 @@ function updTrelloCard() {
 		c2=$(curl --silent --url "$TrelloURI/cards/$c?key=$TrelloAPIkey&token=$TrelloToken" | jq -r '.labels | .[1] | .color')
 		c3=$(curl --silent --url "$TrelloURI/cards/$c?key=$TrelloAPIkey&token=$TrelloToken" | jq -r '.labels | .[2] | .color')
 		case $(tolower "$6") in
-			"new"|"open")						c1="red"		;;
-			"user_testing")					c1="orange"	;;
-			"stalled"|"waiting")		c1="yellow"	;;
-			"resolved"|"rejected")	c1="green"	;;
-			*)											c1="black"	;;
+			"new"|"open")          c1="red"		;;
+			"user_testing")        c1="orange"	;;
+			"stalled"|"waiting")   c1="yellow"	;;
+			"resolved"|"rejected") c1="green"	;;
+			*)                     c1="black"	;;
 		esac
 		cAll="$c1"
-		[ -n "$c2" ] && cAll="$cAll,$c2"
-		[ -n "$c3" ] && cAll="$cAll,$c3"
+		[ -n "$c2" -a "$c2" != "null" ] && cAll="$cAll,$c2"
+		[ -n "$c3" -a "$c3" != "null" ] && cAll="$cAll,$c3"
 		v=$(urlencode "$cAll")
 		cID=$(curl --silent --request PUT --url "$TrelloURI/cards/$c/labels?value=$v&key=$TrelloAPIkey&token=$TrelloToken" | jq -r '{id} | .id')
 		[ "$cID" == "$c" ] && echo "Fixed."
@@ -333,12 +337,12 @@ function updTrelloCard() {
 		c2=$(curl --silent --url "$TrelloURI/cards/$c?key=$TrelloAPIkey&token=$TrelloToken" | jq -r '.labels | .[1] | .color')
 		c3=$(curl --silent --url "$TrelloURI/cards/$c?key=$TrelloAPIkey&token=$TrelloToken" | jq -r '.labels | .[2] | .color')
 		case $(tolower "$7") in
-			"change"|"change request")	c2="purple"	;;
-			*)													c2="" ;;
+			"change"|"change request") c2="purple"	;;
+			*)                         c2="" ;;
 		esac
 		cAll="$c1"
-		[ -n "$c2" ] && cAll="$cAll,$c2"
-		[ -n "$c3" ] && cAll="$cAll,$c3"
+		[ -n "$c2" -a "$c2" != "null" ] && cAll="$cAll,$c2"
+		[ -n "$c3" -a "$c3" != "null" ] && cAll="$cAll,$c3"
 		v=$(urlencode "$cAll")
 		cID=$(curl --silent --request PUT --url "$TrelloURI/cards/$c/labels?value=$v&key=$TrelloAPIkey&token=$TrelloToken" | jq -r '{id} | .id')
 		[ "$cID" == "$c" ] && echo "Fixed."
@@ -350,15 +354,15 @@ function updTrelloCard() {
 		c2=$(curl --silent --url "$TrelloURI/cards/$c?key=$TrelloAPIkey&token=$TrelloToken" | jq -r '.labels | .[1] | .color')
 		c3=$(curl --silent --url "$TrelloURI/cards/$c?key=$TrelloAPIkey&token=$TrelloToken" | jq -r '.labels | .[2] | .color')
 		if [ "$9" -ge 30 -a "$9" -lt 40 ]; then
-				c3="light green"
-			elif [ "$9" -ge 40 ]; then
-				c3="pink"
-			else
-				c3=""
+			c3="blue"
+		elif [ "$9" -ge 40 ]; then
+			c3="pink"
+		else
+			c3=""
 		fi
 		cAll="$c1"
-		[ -n "$c2" ] && cAll="$cAll,$c2"
-		[ -n "$c3" ] && cAll="$cAll,$c3"
+		[ -n "$c2" -a "$c2" != "null" ] && cAll="$cAll,$c2"
+		[ -n "$c3" -a "$c3" != "null" ] && cAll="$cAll,$c3"
 		v=$(urlencode "$cAll")
 		cID=$(curl --silent --request PUT --url "$TrelloURI/cards/$c/labels?value=$v&key=$TrelloAPIkey&token=$TrelloToken" | jq -r '{id} | .id')
 		[ "$cID" == "$c" ] && echo "Fixed."
@@ -443,7 +447,7 @@ function compareAttr() {
 	fi
 	if [ "$lo" != "$ro" ]; then
 		logn "Ticket #$2 (in '$6'): $5 change from Trello::'$3' to RT::'$4'"
-		if [ "$7" == "1" ]; then
+		if [ "$7" != "1" ]; then
 			echo -n " ... "
 			case "$5" in
 				"Subject")			updTrelloCard "$1" "$8" "$2: $4"								;;
