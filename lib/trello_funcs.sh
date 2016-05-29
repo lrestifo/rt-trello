@@ -279,63 +279,76 @@ function readTrelloCard() {
 # Non-empty arguments will update the corresponding attribute in Trello
 function updTrelloCard() {
 	c="$2"
+	# Card name
 	if [ -n "$3" ]; then
 		logd "Updating card name"
 		v=$(urlencode "$3")
 		cID=$(curl --silent --request PUT --url "$TrelloURI/cards/$c/name?value=$v&key=$TrelloAPIkey&token=$TrelloToken" | jq -r '{id} | .id')
 		[ "$cID" == "$c" ] && echo "Fixed."
 	fi
+	# Card description
 	if [ -n "$4" ]; then
 		logd "Updating card description"
 		v=$(urlencode "$4")
 		cID=$(curl --silent --request PUT --url "$TrelloURI/cards/$c/desc?value=$v&key=$TrelloAPIkey&token=$TrelloToken" | jq -r '{id} | .id')
 		[ "$cID" == "$c" ] && echo "Fixed."
 	fi
+	# Card due date
 	if [ -n "$5" ]; then
 		logd "Updating card due date"
 		cID=$(curl --silent --request PUT --url "$TrelloURI/cards/$c/due?value=$5&key=$TrelloAPIkey&token=$TrelloToken" | jq -r '{id} | .id')
 		[ "$cID" == "$c" ] && echo "Fixed."
 	fi
-	if [ -n "$6" ]; then
-		logd "Updating card 1st color attribute"
-		case $(tolower "$6") in
-			"new"|"open")						c1="red"		;;
-			"user_testing")					c1="orange"	;;
-			"stalled"|"waiting")		c1="yellow"	;;
-			"resolved"|"rejected")	c1="green"	;;
-			*)											c1="$6"		;;
-		esac
-		c2=$(curl --silent --url "$TrelloURI/cards/$c?key=$TrelloAPIkey&token=$TrelloToken" | jq -r '.labels | .[1] | .color')
-		if [ -n "$c2" ]; then
-			v=$(urlencode "$c1,$c2")
-		else
-			v=$(urlencode "$c1")
-		fi
-		cID=$(curl --silent --request PUT --url "$TrelloURI/cards/$c/labels?value=$v&key=$TrelloAPIkey&token=$TrelloToken" | jq -r '{id} | .id')
-		[ "$cID" == "$c" ] && echo "Fixed."
-	fi
-	if [ -n "$7" ]; then
-		logd "Updating card 2nd color attribute"
-		c1=$(curl --silent --url "$TrelloURI/cards/$c?key=$TrelloAPIkey&token=$TrelloToken" | jq -r '.labels | .[0] | .color')
-		case $(tolower "$7") in
-			"change"|"change request")	c2="purple"	;;
-			"task"|"project task")			c2="blue"		;;
-			*)													c2="$7"			;;
-		esac
-		v=$(urlencode "$c1,$c2")
-		cID=$(curl --silent --request PUT --url "$TrelloURI/cards/$c/labels?value=$v&key=$TrelloAPIkey&token=$TrelloToken" | jq -r '{id} | .id')
-		[ "$cID" == "$c" ] && echo "Fixed."
-	fi
+	# Card owner
 	if [ -n "$8" ]; then
 		logd "Updating card owner"
 		v=$(boardUID "$8" "$1")
 		cID=$(curl --silent --request PUT --url "$TrelloURI/cards/$c/idMembers?value=$v&key=$TrelloAPIkey&token=$TrelloToken" | jq -r '{id} | .id')
 		[ "$cID" == "$c" ] && echo "Fixed."
 	fi
+	# Label 1 (Status)
+	if [ -n "$6" ]; then
+		logd "Updating card 1st color attribute"
+		c1=$(curl --silent --url "$TrelloURI/cards/$c?key=$TrelloAPIkey&token=$TrelloToken" | jq -r '.labels | .[0] | .color')
+		c2=$(curl --silent --url "$TrelloURI/cards/$c?key=$TrelloAPIkey&token=$TrelloToken" | jq -r '.labels | .[1] | .color')
+		c3=$(curl --silent --url "$TrelloURI/cards/$c?key=$TrelloAPIkey&token=$TrelloToken" | jq -r '.labels | .[2] | .color')
+		case $(tolower "$6") in
+			"new"|"open")						c1="red"		;;
+			"user_testing")					c1="orange"	;;
+			"stalled"|"waiting")		c1="yellow"	;;
+			"resolved"|"rejected")	c1="green"	;;
+			*)											c1="black"	;;
+		esac
+		cAll="$c1"
+		[ -n "$c2" ] && cAll="$cAll,$c2"
+		[ -n "$c3" ] && cAll="$cAll,$c3"
+		v=$(urlencode "$cAll")
+		cID=$(curl --silent --request PUT --url "$TrelloURI/cards/$c/labels?value=$v&key=$TrelloAPIkey&token=$TrelloToken" | jq -r '{id} | .id')
+		[ "$cID" == "$c" ] && echo "Fixed."
+	fi
+	# Label 2 (Request Type)
+	if [ -n "$7" ]; then
+		logd "Updating card 2nd color attribute"
+		c1=$(curl --silent --url "$TrelloURI/cards/$c?key=$TrelloAPIkey&token=$TrelloToken" | jq -r '.labels | .[0] | .color')
+		c2=$(curl --silent --url "$TrelloURI/cards/$c?key=$TrelloAPIkey&token=$TrelloToken" | jq -r '.labels | .[1] | .color')
+		c3=$(curl --silent --url "$TrelloURI/cards/$c?key=$TrelloAPIkey&token=$TrelloToken" | jq -r '.labels | .[2] | .color')
+		case $(tolower "$7") in
+			"change"|"change request")	c2="purple"	;;
+			*)													c2="" ;;
+		esac
+		cAll="$c1"
+		[ -n "$c2" ] && cAll="$cAll,$c2"
+		[ -n "$c3" ] && cAll="$cAll,$c3"
+		v=$(urlencode "$cAll")
+		cID=$(curl --silent --request PUT --url "$TrelloURI/cards/$c/labels?value=$v&key=$TrelloAPIkey&token=$TrelloToken" | jq -r '{id} | .id')
+		[ "$cID" == "$c" ] && echo "Fixed."
+	fi
+	# Label 3 (Priority)
 	if [ -n "$9" ]; then
 		logd "Updating card 3rd color attribute"
 		c1=$(curl --silent --url "$TrelloURI/cards/$c?key=$TrelloAPIkey&token=$TrelloToken" | jq -r '.labels | .[0] | .color')
 		c2=$(curl --silent --url "$TrelloURI/cards/$c?key=$TrelloAPIkey&token=$TrelloToken" | jq -r '.labels | .[1] | .color')
+		c3=$(curl --silent --url "$TrelloURI/cards/$c?key=$TrelloAPIkey&token=$TrelloToken" | jq -r '.labels | .[2] | .color')
 		if [ "$9" -ge 30 -a "$9" -lt 40 ]; then
 				c3="light green"
 			elif [ "$9" -ge 40 ]; then
@@ -414,16 +427,18 @@ function compareAttr() {
 	fi
 	if [ "$5" == "Request Type" ]; then
 		# Only relevant for change requests
-		[ "$ro" != "change request" ] && ro="$lo"
+		[ "$lo" != "change request" ] && lo=""
+		[ "$ro" != "change request" ] && ro=""
 	fi
 	if [ "$5" == "Priority" ]; then
 		# Only relevat for high and medium
+		[ "$lo" != "prio:high" -a "$lo" != "prio:medium" ] && lo=""
 		if [ "$ro" -ge 30 -a "$ro" -lt 40 ]; then
-			ro="light green"
+			ro="prio:high"
 		elif [ "$ro" -ge 40 ]; then
-			ro="pink"
+			ro="prio:medium"
 		else
-			ro="$lo"
+			ro=""
 		fi
 	fi
 	if [ "$lo" != "$ro" ]; then
@@ -473,11 +488,7 @@ function syncFromRT() {
 			compareAttr "$1" "$ttID" "$ttDue" "$rtDue" "Due Date" "$ttList" "$2" "$c"
 			compareAttr "$1" "$ttID" "$ttOwner" "$rtOwnerTrello" "Owner" "$ttList" "$2" "$c"
 			compareAttr "$1" "$ttID" "$ttStat" "$rtStat" "Status" "$ttList" "$2" "$c"
-			if [ "$rtType" == "Change request" -o "$rtType" == "Project task" ] ; then
-				compareAttr "$1" "$ttID" "$ttType" "$rtType" "Request Type" "$ttList" "$2" "$c"
-			else
-				compareAttr "$1" "$ttID" "$ttType" "null" "Request Type" "$ttList" "$2" "$c"
-			fi
+			compareAttr "$1" "$ttID" "$ttType" "$rtType" "Request Type" "$ttList" "$2" "$c"
 			compareAttr "$1" "$ttID" "$ttPrio" "$rtPrio" "Priority" "$ttList" "$2" "$c"
 		fi
 	done
