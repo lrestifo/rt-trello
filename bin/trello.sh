@@ -65,7 +65,7 @@ source "$baseDir/lib/trello_funcs.sh"
 [ $# -lt 1 ] && usage && exit 1
 proc=$(basename "$0")
 cmd="$1"; shift
-while getopts ":b:c:d:l:m:o:r:s:t:u:#:X" o; do
+while getopts ":b:c:d:l:m:o:p:r:s:t:u:#:X" o; do
   case "${o}" in
     b)
       board="${OPTARG}"
@@ -84,6 +84,9 @@ while getopts ":b:c:d:l:m:o:r:s:t:u:#:X" o; do
       ;;
     o)
       ownerEmail="${OPTARG}"
+      ;;
+    p)
+      rPrio="${OPTARG}"
       ;;
     r)
       rType="${OPTARG}"
@@ -154,9 +157,9 @@ case "$cmd" in
 		boardUID "$usrname" "$board"
 		;;
 	"addCard")
-		[ -n "$board" ] || die "Usage: $proc addCard -b <boardName> -l <listName> [ -c <cardName> -t <Description> -d <DueDate> -u <Colour> -r <reqType> -o <Owner> ]"
-		[ -n  "$list" ] || die "Usage: $proc addCard -b <boardName> -l <listName> [ -c <cardName> -t <Description> -d <DueDate> -u <Colour> -r <reqType> -o <Owner> ]"
-		addTrelloCard "$board" "$list" "$card" "$text" "$dueDate" "$colour" "$rType" "$ownerEmail"
+		[ -n "$board" ] || die "Usage: $proc addCard -b <boardName> -l <listName> [ -c <cardName> -t <Description> -d <DueDate> -u <Colour> -r <reqType> -o <Owner> -p <priority> ]"
+		[ -n  "$list" ] || die "Usage: $proc addCard -b <boardName> -l <listName> [ -c <cardName> -t <Description> -d <DueDate> -u <Colour> -r <reqType> -o <Owner> -p <priority> ]"
+		addTrelloCard "$board" "$list" "$card" "$text" "$dueDate" "$colour" "$rType" "$ownerEmail" "$rPrio"
 		;;
 	"addFromRT")
 		[ -n    "$board" ] || die "Usage: $proc addFromRT -b <boardName> -l <listName> -# <rtTicket#>"
